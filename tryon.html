@@ -1,99 +1,157 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Beauty AR Try-On</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Beauty Try-On</title>
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      background: #f7f7f7;
-    }
-    #video {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    #overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-    }
+    body { font-family: system-ui, Arial; margin:0; padding:0; display:flex; flex-direction:column; align-items:center; }
+    header{ width:100%; background:#ffb6c1; color:#fff; padding:1rem; text-align:center; }
+    .container{ max-width:900px; width:100%; padding:1rem; display:flex; gap:1rem; }
+    .camera { position:relative; width:360px; height:480px; background:#000; border-radius:12px; overflow:hidden; }
+    video{ width:100%; height:100%; object-fit:cover; display:block; }
+    canvas{ position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
+    .controls{ flex:1; min-width:220px; }
+    label{ display:block; margin:0.5rem 0 0.25rem; }
+    .note{ font-size:13px; color:#555; margin-top:12px; }
+    .small{ font-size:12px; color:#666; margin-top:6px; }
   </style>
 </head>
 <body>
-  <video id="video" autoplay muted playsinline></video>
-  <canvas id="overlay"></canvas>
+  <header>
+    <h2>Beauty Try-On — Virtual Lipstick</h2>
+    <div style="font-size:13px; margin-top:6px;">Allow camera → pick a color → see overlay</div>
+  </header>
 
-  <!-- Load face-api.js -->
-  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+  <main class="container">
+    <div class="camera">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <div class="controls">
+      <label for="lipcolor">Lip color</label>
+      <input id="lipcolor" type="color" value="#C2185B" />
+
+      <label for="alpha">Opacity</label>
+      <input id="alpha" type="range" min="0.1" max="1" step="0.05" value="0.65" />
+
+      <div class="note">Estimated skin tone (approx.)</div>
+      <div id="skintone" class="small">Point camera at your face — skin tone will appear here</div>
+
+      <div class="note" style="margin-top:18px;">
+        Models must be in <code>/models</code> in your repo (uploaded earlier). If you see model 404s in the console, upload them and refresh.
+      </div>
+    </div>
+  </main>
+
+  <!-- face-api.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
   <script>
-    const video = document.getElementById('video');
-    const overlay = document.getElementById('overlay');
-    const context = overlay.getContext('2d');
+  // Minimal client-side try-on script (uses face-api.js)
+  (async function(){
+    const MODEL_PATH = '/models'   // models folder in your repo (root)
+    const video = document.getElementById('video')
+    const canvas = document.getElementById('overlay')
+    const lipPicker = document.getElementById('lipcolor')
+    const alphaRange = document.getElementById('alpha')
+    const skinToneEl = document.getElementById('skintone')
 
-    // Start video immediately
-    async function startVideo() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
+    // Load models
+    try {
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_PATH)
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_PATH)
+    } catch (e) {
+      console.error('Model load error — ensure /models exist and contain the model files.', e)
+      skinToneEl.textContent = 'Models not loaded (check console).'
+      return
+    }
+
+    // Start camera
+    async function startCamera(){
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+        video.srcObject = stream
+        await video.play()
+        onPlayLoop()
       } catch (err) {
-        console.error("Camera error:", err);
+        console.error('Camera error', err)
+        skinToneEl.textContent = 'Camera error: ' + (err.message || err)
       }
     }
 
-    // Load models from /models folder
-    async function loadModels() {
-      await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-      await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+    // Draw lip overlay given landmarks
+    function drawLipOverlay(ctx, landmarks, color, alpha=0.6){
+      const top = landmarks.getTopLip()
+      const bottom = landmarks.getBottomLip()
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.beginPath()
+      top.forEach((p,i)=> i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y))
+      bottom.forEach((p)=> ctx.lineTo(p.x,p.y))
+      ctx.closePath()
+      ctx.fillStyle = color
+      ctx.fill()
+      ctx.restore()
     }
 
-    // Draw lipstick overlay
-    function drawLips(landmarks) {
-      const lips = landmarks.getMouth();
-      context.fillStyle = 'rgba(255, 0, 0, 0.5)';
-      context.beginPath();
-      lips.forEach((point, index) => {
-        if (index === 0) {
-          context.moveTo(point.x, point.y);
-        } else {
-          context.lineTo(point.x, point.y);
+    // Simple skin tone sampler from cheeks
+    function estimateSkinTone(videoEl, landmarks){
+      try {
+        const left = landmarks.positions[2]
+        const right = landmarks.positions[14]
+        const tmp = document.createElement('canvas')
+        tmp.width = videoEl.videoWidth
+        tmp.height = videoEl.videoHeight
+        const ctx = tmp.getContext('2d')
+        ctx.drawImage(videoEl,0,0)
+        const samples = [left, right]
+        let r=0,g=0,b=0,count=0
+        samples.forEach(pt=>{
+          const sx = Math.max(0, Math.round(pt.x)-6)
+          const sy = Math.max(0, Math.round(pt.y)-6)
+          const w = Math.min(12, tmp.width - sx)
+          const h = Math.min(12, tmp.height - sy)
+          const img = ctx.getImageData(sx,sy,w,h).data
+          for(let i=0;i<img.length;i+=4){ r+=img[i]; g+=img[i+1]; b+=img[i+2]; count++ }
+        })
+        if(count===0) return null
+        r = Math.round(r/count); g = Math.round(g/count); b = Math.round(b/count)
+        const hex = '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('')
+        let lum = 0.2126*r + 0.7152*g + 0.0722*b
+        let label = 'Medium'
+        if(lum>200) label='Very Light'; else if(lum>150) label='Light'; else if(lum>100) label='Medium'; else if(lum>60) label='Dark'; else label='Very Dark'
+        return {hex, label}
+      } catch(e){
+        return null
+      }
+    }
+
+    // Main loop: detect and draw
+    async function onPlayLoop(){
+      const displaySize = { width: video.videoWidth, height: video.videoHeight }
+      canvas.width = displaySize.width
+      canvas.height = displaySize.height
+      const ctx = canvas.getContext('2d')
+
+      async function run(){
+        ctx.clearRect(0,0,canvas.width,canvas.height)
+        const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks()
+        if(detection && detection.landmarks){
+          drawLipOverlay(ctx, detection.landmarks, lipPicker.value, parseFloat(alphaRange.value))
+          // set skin tone once (or update slowly)
+          const tone = estimateSkinTone(video, detection.landmarks)
+          if(tone) skinToneEl.textContent = `${tone.hex} — ${tone.label}`
         }
-      });
-      context.closePath();
-      context.fill();
-    }
-
-    // Detect loop
-    async function onPlay() {
-      const options = new faceapi.TinyFaceDetectorOptions();
-      const result = await faceapi.detectSingleFace(video, options).withFaceLandmarks();
-
-      context.clearRect(0, 0, overlay.width, overlay.height);
-
-      if (result) {
-        const dims = faceapi.matchDimensions(overlay, video, true);
-        const resized = faceapi.resizeResults(result, dims);
-        drawLips(resized.landmarks);
+        requestAnimationFrame(run)
       }
-
-      requestAnimationFrame(onPlay);
+      run()
     }
 
-    // Setup
-    video.addEventListener('playing', () => {
-      overlay.width = video.videoWidth;
-      overlay.height = video.videoHeight;
-      onPlay();
-    });
-
-    loadModels().then(startVideo);
+    // Start everything
+    startCamera()
+  })();
   </script>
 </body>
 </html>
