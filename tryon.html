@@ -126,7 +126,7 @@
       }
     }
 
-    // Main loop: detect and draw
+       // Main loop: detect and draw
     async function onPlayLoop(){
       const displaySize = { width: video.videoWidth, height: video.videoHeight }
       canvas.width = displaySize.width
@@ -134,20 +134,37 @@
       const ctx = canvas.getContext('2d')
 
       async function run(){
-        ctx.clearRect if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-  canvas.width = video.videoWidth
-  canvas.height = video.videoHeight
-}
-(0,0,canvas.width,canvas.height)
-        const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks()
-        if(detection && detection.landmarks){
-          drawLipOverlay(ctx, detection.landmarks, lipPicker.value, parseFloat(alphaRange.value))
-          // set skin tone once (or update slowly)
-          const tone = estimateSkinTone(video, detection.landmarks)
-          if(tone) skinToneEl.textContent = `${tone.hex} — ${tone.label}`
+        // Make sure canvas matches video resolution
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth
+          canvas.height = video.videoHeight
         }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+        const detection = await faceapi
+          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+
+        if (detection && detection.landmarks) {
+          drawLipOverlay(
+            ctx,
+            detection.landmarks,
+            lipPicker.value,
+            parseFloat(alphaRange.value)
+          )
+
+          // Update skin tone
+          const tone = estimateSkinTone(video, detection.landmarks)
+          if (tone) {
+            skinToneEl.textContent = `${tone.hex} — ${tone.label}`
+          }
+        }
+
         requestAnimationFrame(run)
       }
+
+      // ⬅️ this was missing
       run()
     }
 
