@@ -60,8 +60,9 @@
 
     // Load models
     try {
-      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_PATH)
-      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_PATH)
+     await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
+await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
+
     } catch (e) {
       console.error('Model load error — ensure /models exist and contain the model files.', e)
       skinToneEl.textContent = 'Models not loaded (check console).'
