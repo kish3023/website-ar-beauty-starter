@@ -83,18 +83,16 @@
 
     // Draw lip overlay given landmarks
     function drawLipOverlay(ctx, landmarks, color, alpha=0.6){
-      const top = landmarks.getTopLip()
-      const bottom = landmarks.getBottomLip()
-      ctx.save()
-      ctx.globalAlpha = alpha
-      ctx.beginPath()
-      top.forEach((p,i)=> i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y))
-      bottom.forEach((p)=> ctx.lineTo(p.x,p.y))
-      ctx.closePath()
-      ctx.fillStyle = color
-      ctx.fill()
-      ctx.restore()
-    }
+  const mouth = landmarks.getMouth()
+  ctx.save()
+  ctx.globalAlpha = alpha
+  ctx.beginPath()
+  mouth.forEach((p,i)=> i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y))
+  ctx.closePath()
+  ctx.fillStyle = color
+  ctx.fill()
+  ctx.restore()
+}
 
     // Simple skin tone sampler from cheeks
     function estimateSkinTone(videoEl, landmarks){
@@ -136,7 +134,11 @@
       const ctx = canvas.getContext('2d')
 
       async function run(){
-        ctx.clearRect(0,0,canvas.width,canvas.height)
+        ctx.clearRect if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+}
+(0,0,canvas.width,canvas.height)
         const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks()
         if(detection && detection.landmarks){
           drawLipOverlay(ctx, detection.landmarks, lipPicker.value, parseFloat(alphaRange.value))
