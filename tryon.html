@@ -38,16 +38,15 @@
     const overlay = document.getElementById('overlay');
     const context = overlay.getContext('2d');
 
-    // Start video
+    // Start camera after models load
     async function startVideo() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
-      video.srcObject = stream;
-    }
-
-    // Load models
-    async function loadModels() {
-      await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-      await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+      } catch (err) {
+        alert("Camera access denied or not available.");
+        console.error(err);
+      }
     }
 
     // Draw lipstick overlay
@@ -66,30 +65,39 @@
       context.fill();
     }
 
-    // Detect face
+    // Run detection loop
     async function onPlay() {
-      const options = new faceapi.TinyFaceDetectorOptions();
-      const result = await faceapi.detectSingleFace(video, options).withFaceLandmarks();
+      if (video.readyState === 4) {
+        const options = new faceapi.TinyFaceDetectorOptions();
+        const result = await faceapi
+          .detectSingleFace(video, options)
+          .withFaceLandmarks();
 
-      context.clearRect(0, 0, overlay.width, overlay.height);
+        context.clearRect(0, 0, overlay.width, overlay.height);
 
-      if (result) {
-        const dims = faceapi.matchDimensions(overlay, video, true);
-        const resized = faceapi.resizeResults(result, dims);
-        drawLips(resized.landmarks);
+        if (result) {
+          const dims = faceapi.matchDimensions(overlay, video, true);
+          const resized = faceapi.resizeResults(result, dims);
+          drawLips(resized.landmarks);
+        }
       }
-
       requestAnimationFrame(onPlay);
     }
 
-    // Initialize
+    // Init: load models, then camera
+    async function init() {
+      await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+      await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+      await startVideo();
+    }
+
     video.addEventListener('playing', () => {
       overlay.width = video.videoWidth;
       overlay.height = video.videoHeight;
       onPlay();
     });
 
-    loadModels().then(startVideo);
+    init();
   </script>
 </body>
 </html>
